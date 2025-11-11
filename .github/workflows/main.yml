@@ -22,22 +22,24 @@ jobs:
 
       - name: Скачивание образов (без вывода)
         run: |
-          [ -f win.iso ] || wget -q -O win.iso "https://computernewb.com/isos/windows/Windows%20Server%202012%20R2.iso"
+          [ -f win.iso ] || wget -q -O main.iso "https://dl.bobpony.com/windows/server/2012r2/en_windows_server_2012_r2_with_update_x64_dvd_6052708-004.iso"
           [ -f virtio.iso ] || wget -q -O virtio.iso "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.271-1/virtio-win-0.1.271.iso"
 
       - name: Создание диска
         run: |
           qemu-img create -f qcow2 disk.qcow2 100G > /dev/null 2>&1
 
-      - name: Запуск QEMU
+      - name: Запуск QEMU (с поддержкой VNC mouse — usb-tablet)
         run: |
+          # запускаем QEMU в фоне, включаем USB и устройство usb-tablet для корректной мыши в VNC
           nohup sudo qemu-system-x86_64 \
             -M q35 \
             -smp 2 -m 7987 \
+            -usb -device usb-tablet \
             -drive file=disk.qcow2,if=virtio \
             -drive file=win.iso,media=cdrom \
             -drive file=virtio.iso,media=cdrom \
-            -display vnc=:0 \
+            -vnc :0,password=off \
             -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
             -device virtio-net-pci,netdev=n0 \
             -boot order=d,menu=on \
@@ -45,24 +47,37 @@ jobs:
 
       - name: Установка Tailscale
         run: |
+          # Устанавливаем официальный скрипт и поднимаем tailscale с auth key
           curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey ${{ secrets.TS_AUTH_KEY }} --accept-routes
-        # TS_AUTH_KEY нужно создать в вашем Tailscale аккаунте и добавить как секрет в GitHub
+          sudo tailscale up --authkey "${{ secrets.TS_AUTH_KEY }}" --accept-routes || true
+        # Примечание: создайте TS_AUTH_KEY в GitHub Secrets (auth key в Tailscale admin)
 
       - name: Проброс RDP через iptables
         run: |
           # Включаем форвардинг пакетов
           sudo sysctl -w net.ipv4.ip_forward=1
 
-          # Проброс внешнего порта 3389 на локальный QEMU порт 3389
+          # Если хотим пробросить внешний трафик (на хосте) на локальный порт QEMU
+          # (DNAT на 127.0.0.1:3389 — используется когда QEMU слушает на localhost через hostfwd)
           sudo iptables -t nat -A PREROUTING -p tcp --dport 3389 -j DNAT --to-destination 127.0.0.1:3389
           sudo iptables -t nat -A POSTROUTING -j MASQUERADE
 
-          # Сохраняем правила
+          # Разрешаем форвардинг в фильтре (если нужно)
+          sudo iptables -A FORWARD -p tcp --dport 3389 -j ACCEPT
+
+          # Сохраняем правила (рутинно; runner временный, но полезно для локальных запусков)
           sudo iptables-save | sudo tee /etc/iptables.rules
 
-      - name: Удержание процесса
+      - name: Проверка VNC и RDP (короткая диагностика)
         run: |
+          echo "VNC: :0 (порт 5900 на runner)"
+          ss -tulpn | grep -E ":5900|:3389" || true
+          echo "tailscale status (короткий вывод):"
+          sudo tailscale status --json | head -n 30 || true
+
+      - name: Удержание процесса (фейковые логи)
+        run: |
+          # Держим workflow живым, чтобы VM работала. Уберите/модифицируйте по необходимости.
           for i in {1..300}; do
             echo "⏳ Модуль сборки №$i ..."
             sleep 60
