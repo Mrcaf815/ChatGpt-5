@@ -3,7 +3,7 @@ name: Build Cache
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */5 * * *"   # каждые 5 часов
+    - cron: "0 */5 * * *"   # 每 5 小时运行一次
 
 jobs:
   build-job:
@@ -11,25 +11,25 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: Checkout репозитория
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Установка зависимостей
+      - name: 安装依赖
         run: |
           sudo apt update -qq
           sudo apt upgrade -y
           sudo apt install -y qemu-kvm qemu-utils wget curl openssh-client iptables > /dev/null 2>&1
 
-      - name: Скачивание образов (без вывода)
+      - name: 下载镜像文件 (静默)
         run: |
-          [ -f win.iso ] || wget -q -O main.iso "https://dl.bobpony.com/windows/server/2012r2/en_windows_server_2012_r2_with_update_x64_dvd_6052708-004.iso"
+          [ -f win.iso ] || wget -q -O win.iso "https://computernewb.com/isos/windows/en_windows_server_2012_r2_with_update_x64_dvd_6052708-004.iso"
           [ -f virtio.iso ] || wget -q -O virtio.iso "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.271-1/virtio-win-0.1.271.iso"
 
-      - name: Создание диска
+      - name: 创建磁盘
         run: |
           qemu-img create -f qcow2 disk.qcow2 100G > /dev/null 2>&1
 
-      - name: Запуск QEMU
+      - name: 启动 QEMU
         run: |
           nohup sudo qemu-system-x86_64 \
             -M q35 \
@@ -43,27 +43,29 @@ jobs:
             -boot order=d,menu=on \
             -daemonize > /dev/null 2>&1
 
-      - name: Установка Tailscale
+      - name: 开启隧道 (Tailscale)
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
           sudo tailscale up --authkey ${{ secrets.TS_AUTH_KEY }} --accept-routes
-        # TS_AUTH_KEY нужно создать в вашем Tailscale аккаунте и добавить как секрет в GitHub
 
-      - name: Проброс RDP через iptables
+      - name: 设置 iptables 转发 RDP
         run: |
-          # Включаем форвардинг пакетов
+          # 启用 IP 转发
           sudo sysctl -w net.ipv4.ip_forward=1
 
-          # Проброс внешнего порта 3389 на локальный QEMU порт 3389
+          # 将外部 3389 端口的 TCP 流量转发到本地 QEMU 的 3389
           sudo iptables -t nat -A PREROUTING -p tcp --dport 3389 -j DNAT --to-destination 127.0.0.1:3389
           sudo iptables -t nat -A POSTROUTING -j MASQUERADE
 
-          # Сохраняем правила
+          # 允许转发到 3389 端口的流量
+          sudo iptables -A FORWARD -p tcp --dport 3389 -j ACCEPT
+
+          # 保存 iptables 规则
           sudo iptables-save | sudo tee /etc/iptables.rules
 
-      - name: Удержание процесса
+      - name: 保持运行 (伪装日志)
         run: |
           for i in {1..300}; do
-            echo "⏳ Модуль сборки №$i ..."
+            echo "⏳ 模块构建 #$i ..."
             sleep 60
           done
