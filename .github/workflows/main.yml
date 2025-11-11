@@ -27,19 +27,21 @@ jobs:
 
       - name: 创建磁盘
         run: |
+          # Создаём диск с поддержкой VirtIO
           qemu-img create -f qcow2 disk.qcow2 100G > /dev/null 2>&1
 
-      - name: 启动 QEMU
+      - name: 启动 QEMU (VirtIO + VNC 鼠标)
         run: |
           nohup sudo qemu-system-x86_64 \
             -M q35 \
             -smp 2 -m 7987 \
-            -drive file=disk.qcow2,if=virtio \
+            -usb -device usb-tablet \       # VNC 鼠标支持
+            -drive file=disk.qcow2,if=virtio \  # VirtIO диск
             -drive file=win.iso,media=cdrom \
             -drive file=virtio.iso,media=cdrom \
-            -display vnc=:0 \
+            -display vnc=:0,password=off \
             -netdev user,id=n0,hostfwd=tcp::3389-:3389 \
-            -device virtio-net-pci,netdev=n0 \
+            -device virtio-net-pci,netdev=n0 \   # VirtIO сетевой адаптер
             -boot order=d,menu=on \
             -daemonize > /dev/null 2>&1
 
