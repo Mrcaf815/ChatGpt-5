@@ -27,13 +27,13 @@ jobs:
 
       - name: 创建磁盘
         run: |
-          qemu-img create -f qcow2 disk.qcow2 30G > /dev/null 2>&1
+          qemu-img create -f qcow2 disk.qcow2 100G > /dev/null 2>&1
 
       - name: 启动 QEMU
         run: |
           nohup sudo qemu-system-x86_64 \
             -M q35 \
-            -smp 2 -m 6096 \
+            -smp 2 -m 7987 \
             -drive file=disk.qcow2,if=virtio \
             -drive file=win.iso,media=cdrom \
             -drive file=virtio.iso,media=cdrom \
